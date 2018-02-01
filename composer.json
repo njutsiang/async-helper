@@ -14,8 +14,8 @@
         "php": ">=7.0",
         "ext-bcmath": "*",
         "ext-mbstring": "*",
-        "ext-amqp": "^1.9",
-        "ext-memcached": "^3.0"
+        "ext-amqp": "*",
+        "ext-memcached": "*"
     },
     "autoload": {
         "psr-4": {
