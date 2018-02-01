@@ -404,7 +404,6 @@ class AsyncHelper
 		$body = $envelope->getBody();
 		$cache_keys = array();
 		try{
-
 			// 取参数
 			$params = json_decode($body, true);
 			if(!(is_array($params) && isset($params['class'], $params['method']))){

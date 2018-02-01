@@ -63,7 +63,7 @@ class UserController
             'body' => '请点击邮件中的链接完成验证，吧啦啦啦' 
         ];
         // 第四步、通过异步助手发送邮件
-        $async_helper->run('SendMailHelper', 'request', [$mail]);
+        $async_helper->run('\\SendMailHelper', 'request', [$mail]);
         
         // 这是同步的模式去发送邮件，如果邮件服务响应迟缓或异常，就会直接影响该请求的响应时间，甚至丢失这封重要邮件
         // SendMailHelper::request($mail);
@@ -77,13 +77,15 @@ consume.php
 ```php
 <?php
 require_once('vendor/autoload.php');
+require_once('SendMailHelper.php');
+
 use l669\AsyncHelper;
 use l669\CacheHelper;
 
 $cache_helper = new CacheHelper('127.0.0.1', 11211);
 while(true){
     try{
-        $async_helper = AsyncHelper([
+        $async_helper = new AsyncHelper([
             'host' => '127.0.0.1',
             'port' => '5672',
             'user' => 'root',
@@ -115,4 +117,5 @@ php consume.php
 - [安装 memcached](https://segmentfault.com/n/1330000012854656)
 - [安装 rabbitmq](https://segmentfault.com/n/1330000012865854?token=98d34e1eac9cac279d84abba0c45f834)
 - [安装 php7.1.5、ext-amqp、ext-memcached](https://segmentfault.com/n/1330000012854879?token=4a1e0e0debb594ba20d091e6a7fa40d2)
+- [安装 supervisor](https://segmentfault.com/n/1330000012996856?token=08f6ca7a324368d6b17efef67ccdaa64)
 
