@@ -48,7 +48,7 @@ class UserController
         // 假设这是一个用户注册的请求，用户提交了姓名、邮箱、验证码
         // 第一步、校验用户信息
         // 第二步、实例化异步助手，这时候会连接 AMQP
-        $async_helper = AsyncHelper([
+        $async_helper = new AsyncHelper([
             'host' => '127.0.0.1',
             'port' => '5672',
             'user' => 'root',
