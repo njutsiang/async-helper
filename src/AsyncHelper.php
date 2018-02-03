@@ -182,10 +182,11 @@ class AsyncHelper
 
 	/**
 	 * 建立 AMQP 连接
+	 * @param integer|null $qos_count
 	 * @return \AMQPConnection
 	 * @throws \Exception
 	 */
-	public function createConnection()
+	public function createConnection($qos_count = null)
 	{
 		$this->connection = new \AMQPConnection([
 			'host' => $this->host,
@@ -196,6 +197,9 @@ class AsyncHelper
 		]);
 		$this->connection->connect();
 		$this->channel = new \AMQPChannel($this->connection);
+		if($qos_count){
+			$this->channel->qos(0, $qos_count);
+		}
 		$this->exchange = new \AMQPExchange($this->channel);
 		$this->exchange->setName($this->queueName.'.direct');
 		$this->exchange->setType(AMQP_EX_TYPE_DIRECT);
@@ -386,8 +390,7 @@ class AsyncHelper
 	 */
 	public function consume()
 	{
-		$this->createConnection();
-		$this->channel->qos(0, 1);
+		$this->createConnection(1);
 		$this->queue->consume(array($this, 'consumeCallback'));
 		$this->closeConnection();
 	}
@@ -472,16 +475,15 @@ class AsyncHelper
 	public function asyncException($e, $envelope, $queue)
 	{
 		$delivery_tag = $envelope->getDeliveryTag();
-		switch($e->getCode()){
-			case AsyncException::PARAMS_ERROR:
-			case AsyncException::METHOD_DOES_NOT_EXIST:
-			case AsyncException::KNOWN_ERROR:
-				$queue->ack($delivery_tag);
-				break;
-			// 在此添加捕获其他错误码，根据实际错误类型判断是否进行重试
-			default:
-				$this->retry($envelope, $queue);
-				break;
+		$codes = array(
+			AsyncException::PARAMS_ERROR,
+			AsyncException::METHOD_DOES_NOT_EXIST,
+			AsyncException::KNOWN_ERROR
+		);
+		if(($e instanceof AsyncException) && in_array($e->getCode(), $codes)){
+			$queue->ack($delivery_tag);
+		}else{
+			$this->retry($envelope, $queue);
 		}
 	}
 

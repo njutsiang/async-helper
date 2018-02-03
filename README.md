@@ -60,7 +60,7 @@ class UserController
             'from' => 'service@yourdomain.com', 
             'to' => 'username@163.com', 
             'subject' => '恭喜你注册成功',
-            'body' => '请点击邮件中的链接完成验证，吧啦啦啦' 
+            'body' => '请点击邮件中的链接完成验证....'
         ];
         // 第四步、通过异步助手发送邮件
         $async_helper->run('\\SendMailHelper', 'request', [$mail]);
@@ -96,16 +96,91 @@ while(true){
         $async_helper->consume();
     }catch(Exception $e){
         // 可以在这里记录一些日志
+        sleep(2);
     }
 }
 ```
 ```
+# 在命令行下启动消费者进程，推荐使用 supervisor 来管理进程
 php consume.php
 ```
 
+**支持事务**：需要一次提交执行多个异步方法，事务可以确保完成性。
+```php
+// 接着上面的示例来说，这里省略了一些重复的代码，下同
+$async_helper->beginTransaction();
+try{
+    $async_helper->run('\\SendMailHelper', 'request', [$mail1]);
+    $async_helper->run('\\SendMailHelper', 'request', [$mail2]);
+    $async_helper->run('\\SendMailHelper', 'request', [$mail3]);
+    $async_helper->commit();
+}catch(\Exception $e){
+    $async_helper->rollback();
+}
+```
+
+**阻塞式重试**：当异步进程执行一个方法，方法内部抛出异常时进行重试，一些必须遵循执行顺序的业务就要采用阻塞式的重试，通过指定重试最大阻塞时长来控制。
+```php
+use l669\CacheHelper;
+use l669\AsyncHelper;
+$async_helper = new AsyncHelper([
+    'host' => '127.0.0.1',
+    'port' => '5672',
+    'user' => 'root',
+    'pass' => '123456',
+    'vhost' => '/',
+    'cacheHelper' => new CacheHelper('127.0.0.1', 11211),
+    'retryMode' => AsyncHelper::RETRY_MODE_REJECT,  // 阻塞式重试
+    'maxDuration' => 600                            // 最长重试 10 分钟
+]);
+$send_mail_helper = new \SendMailHelper();
+$mail = new \stdClass();
+$mail->from = 'service@yourdomain.com';
+$mail->to = 'username@163.com';
+$mail->subject = '恭喜你注册成功';
+$mail->body = '请点击邮件中的链接完成验证....';
+$async_helper->run($send_mail_helper, 'request', [$mail]);
+
+// 如果方法中需要抛出异常来结束程序，又不希望被异步进程重试，可以抛出以下几种错误码，进程捕获到这些异常后会放弃重试：
+// l669\AsyncException::PARAMS_ERROR
+// l669\AsyncException::METHOD_DOES_NOT_EXIST
+// l669\AsyncException::KNOWN_ERROR
+```
+
+**非阻塞式重试**：当异步执行的方法内部抛出异常，async-helper 会将该方法重新放进队列的尾部，先执行新进入队列的方法，回头再重试刚才执行失败的方法，通过指定最大重试次数来控制。
+```php
+use l669\CacheHelper;
+use l669\AsyncHelper;
+$async_helper = new AsyncHelper([
+    'host' => '127.0.0.1',
+    'port' => '5672',
+    'user' => 'root',
+    'pass' => '123456',
+    'vhost' => 'new',
+    'cacheHelper' => new CacheHelper('127.0.0.1', 11211),
+    'queueName' => 'emails.vip',                    // 给付费的大爷走 VIP 队列
+    'retryMode' => AsyncHelper::RETRY_MODE_TTL,     // 非阻塞式重试
+    'maxRetries' => 10                              // 最多重试 10 次
+]);
+$mail = new \stdClass();
+$mail->from = 'service@yourdomain.com';
+$mail->to = 'username@163.com';
+$mail->subject = '恭喜你注册成功';
+$mail->body = '请点击邮件中的链接完成验证....';
+$async_helper->run('\\SendMailHelper', 'request', [$mail]);
+```
+
+## 应用和解惑
+* 我们采用的是开源的 RabbitMQ 来为我们提供的 AMQP 服务。
+* 你的项目部署在拥有很多服务器节点的集群上，每个节点的程序都需要写日志文件，现在的问题就是要收集所有节点上面的日志到一个地方，方便我们及时发现问题或是做一些统计。所有节点都可以使用 async-helper 异步调用一个写日志的方法，而执行这个写日志的方法的进程只需要在一台机器上启动就可以了，这样所有节点的日志就都实时掌握在手里了。
+* 做过微信公众号开发的都知道，腾讯微信可以将用户的消息推送到我们的服务器，如果我们在 5s 内未及时响应，腾讯微信会重试 3 次，其实这就是消息队列的应用，使用 async-helper 可以轻松的做和这一样的事情。
+* 得益于 RabbitMQ，你可以轻松的横向扩展你的消费者进程的能力，因为 RabbitMQ 天生就支持集群部署，你可以轻松的启动多个消费者进程，或是将消费者进程分布到多台机器上。
+* 如果 RabbitMQ 服务不可用怎么办呢？部署 RabbitMQ 高可用服务是容易的，对外提供单一 IP，这个 IP 是个负载均衡，背后是 RabbitMQ 集群，负载均衡承担对后端集群节点的健康检查。
+* async-helper 能否承受高并发请求？async-helper 生产者使用的是短连接，也就说在你的 HTTP 还没有响应浏览器的时候 async-helper 就已经结束了工作，你连接 RabbitMQ 的时间是百分之百小于 HTTP 请求的时间的，换言之，只要 RabbitMQ 承受并发的能力超过你的 HTTP 服务的承受并发的能力，RabbitMQ 就永远不会崩，通过横向扩展 RabbitMQ 很容易做到的。
+
 ## 和传统 PHP 相比
 * 对任何 PHP 方法通过反射进行异步执行；
-* 高可用，执行方法进入消息队列，即使服务器宕机，执行任务也不丢失；
+* 高可用，执行方法进入消息队列，可持久化，即使服务器宕机，执行任务也不丢失；
 * 高可用，对异常可以进行不限次数和时间的重试，重试次数和时间可配置；
 * 支持对多个异步方法包含在事务中执行，支持回滚事务；
 * 方法的参数类型支持除资源类型（resource）和回调函数（callable）外的任意类型的参数；
