@@ -4,7 +4,7 @@
 PHP 的异步进程助手，借助于 AMQP 实现异步执行 PHP 的方法，将一些很耗时、追求高可用、需要重试机制的操作放到异步进程中去执行，将你的 HTTP 服务从繁重的业务逻辑中解脱出来。以一个较低的成本将传统 PHP 业务逻辑转换成非阻塞、高可用、可扩展的异步模式。
 
 ## 依赖
-- php 7.1.5+
+- php 5.6+
 - ext-bcmath
 - ext-amqp 1.9.1+
 - ext-memcached 3.0.3+
@@ -16,7 +16,7 @@ composer require l669/async-helper
 ```
 或直接下载项目源码
 ```
-wget https://github.com/l669306630/php-async-helper/archive/master.zip
+wget https://github.com/l669306630/async-helper/archive/master.zip
 ```
 
 ## 使用范例
